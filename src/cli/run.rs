@@ -10,6 +10,7 @@ use crate::config::{Config, Settings};
 use crate::duration;
 use crate::env;
 use crate::file::display_path;
+use crate::otel;
 use crate::prepare::{PrepareEngine, PrepareOptions};
 use crate::task::has_any_usage_spec;
 use crate::task::task_helpers::task_needs_permit;
@@ -222,9 +223,25 @@ pub struct Run {
 
     #[clap(skip)]
     pub executor: Option<crate::task::task_executor::TaskExecutor>,
+
+    #[clap(skip)]
+    pub trace_context: Option<otel::TraceContext>,
 }
 
 impl Run {
+    fn otel_task_span_name(task: &Task) -> String {
+        let base = if task.display_name.is_empty() {
+            task.name.clone()
+        } else {
+            task.display_name.clone()
+        };
+        if task.args.is_empty() {
+            base
+        } else {
+            format!("{base} {}", task.args.join(" "))
+        }
+    }
+
     pub async fn run(mut self) -> Result<()> {
         // Check help flags before doing any work
         if self.task == "-h" {
@@ -319,6 +336,12 @@ impl Run {
 
         let mut task_list = get_task_lists(&config, &args, true, self.skip_deps).await?;
 
+        // Capture the user-requested task names *before* dependency resolution,
+        // so the OpenTelemetry root span can be named after what was actually
+        // invoked rather than the (much larger) resolved dep set.
+        let requested_task_names: Vec<String> =
+            task_list.iter().map(|t| t.name.clone()).collect();
+
         // Args after -- go directly to tasks (no prefix)
         if !self.args_last.is_empty() {
             for task in &mut task_list {
@@ -387,11 +410,15 @@ impl Run {
         };
 
         if let Some(timeout) = timeout {
-            tokio::time::timeout(timeout, self.parallelize_tasks(config, resolved_tasks))
-                .await
-                .map_err(|_| eyre!("mise run timed out after {:?}", timeout))??
+            tokio::time::timeout(
+                timeout,
+                self.parallelize_tasks(config, resolved_tasks, requested_task_names),
+            )
+            .await
+            .map_err(|_| eyre!("mise run timed out after {:?}", timeout))??
         } else {
-            self.parallelize_tasks(config, resolved_tasks).await?
+            self.parallelize_tasks(config, resolved_tasks, requested_task_names)
+                .await?
         }
 
         time!("run done");
@@ -406,7 +433,12 @@ impl Run {
             .clone()
     }
 
-    async fn parallelize_tasks(mut self, mut config: Arc<Config>, tasks: Vec<Task>) -> Result<()> {
+    async fn parallelize_tasks(
+        mut self,
+        mut config: Arc<Config>,
+        tasks: Vec<Task>,
+        requested_task_names: Vec<String>,
+    ) -> Result<()> {
         time!("parallelize_tasks start");
 
         // Step 1: Prepare tasks (resolve dependencies, fetch, validate)
@@ -425,6 +457,31 @@ impl Run {
         // Step 4: Create TaskExecutor after tool installation
         self.setup_executor()?;
 
+        // Initialize OpenTelemetry trace context and log collector if configured
+        let mut otel_log_handle: Option<tokio::task::JoinHandle<()>> = None;
+        if otel::is_enabled() {
+            let root_span_suffix = if requested_task_names.is_empty() {
+                String::new()
+            } else {
+                format!(" {}", requested_task_names.join(" "))
+            };
+            let root_span_name = format!("mise run{root_span_suffix}");
+            let parent_trace = std::env::var("MISE_OTEL_TRACE_ID").ok();
+            let parent_span = std::env::var("MISE_OTEL_PARENT_SPAN_ID").ok();
+            self.trace_context = Some(
+                if let (Some(trace_id), Some(parent_span_id)) = (parent_trace, parent_span) {
+                    otel::TraceContext::from_parent(&root_span_name, trace_id, parent_span_id)
+                } else {
+                    otel::TraceContext::new(&root_span_name)
+                },
+            );
+            let (collector, handle) = otel::OtelLogCollector::new();
+            if let Some(ref mut executor) = self.executor {
+                executor.otel_log_collector = Some(collector);
+            }
+            otel_log_handle = Some(handle);
+        }
+
         // Disable exit-on-ctrl-c so tasks can handle SIGINT gracefully
         ctrlc::exit_on_ctrl_c(false);
 
@@ -439,7 +496,7 @@ impl Run {
         // Pump deps leaves into scheduler
         let mut main_done_rx = scheduler.pump_deps(main_deps.clone()).await;
         let spawn_context = scheduler.spawn_context(config.clone());
-        scheduler
+        let run_result = scheduler
             .run_loop(
                 &mut main_done_rx,
                 main_deps.clone(),
@@ -453,9 +510,42 @@ impl Run {
                     }
                 },
             )
-            .await?;
+            .await;
 
-        scheduler.join_all(this.continue_on_error).await?;
+        let join_result = scheduler.join_all(this.continue_on_error).await;
+
+        // Export OpenTelemetry spans and drain logs *before* propagating any
+        // scheduler error, so failed runs still produce traces.
+        if let Some(trace_ctx) = this.trace_context.clone() {
+            let has_failures = this.is_stopping() || run_result.is_err() || join_result.is_err();
+            // Shut down the log collector sender so the drain loop can finish
+            if let Some(ref executor) = this.executor
+                && let Some(ref collector) = executor.otel_log_collector
+            {
+                collector.shutdown();
+            }
+            // Wait for the log collector background task to drain remaining lines
+            if let Some(handle) = otel_log_handle {
+                let _ = handle.await;
+            }
+            let spans = trace_ctx
+                .finish(has_failures)
+                .await
+                .into_iter()
+                .filter(|span| {
+                    span.attributes.iter().any(|(key, value)| {
+                        key == "mise.span_type"
+                            && (value == "run" || value == "monorepo_group")
+                    })
+                })
+                .collect();
+            if let Err(err) = otel::export_spans(spans).await {
+                debug!("failed to export otel spans: {err}");
+            }
+        }
+
+        run_result?;
+        join_result?;
 
         // Step 5: Display results and handle failures
         let results_display = crate::task::task_results_display::TaskResultsDisplay::new(
@@ -465,6 +555,7 @@ impl Run {
             this.timings(),
         );
         results_display.display_results(num_tasks, timer);
+
         time!("parallelize_tasks done");
 
         Ok(())
@@ -541,6 +632,40 @@ impl Run {
                 let deps = deps_for_remove.lock().await;
                 (deps.handled_task_keys(), deps.any_dep_ran(&task))
             };
+            // Start otel span (sends in-progress span with zero duration;
+            // a completed span is re-sent from end_task_span -> finish()).
+            let otel_started = if let Some(ref trace_ctx) = this.trace_context {
+                let otel_span_name = Self::otel_task_span_name(&task);
+                let parent_span_id = trace_ctx.parent_span_for_task(
+                    task.config_root.as_ref(),
+                    ctx.config.project_root.as_ref(),
+                );
+                let mut attrs = vec![
+                    ("mise.task.name".to_string(), task.name.clone()),
+                    ("mise.task.display_name".to_string(), otel_span_name.clone()),
+                    (
+                        "mise.task.source".to_string(),
+                        task.config_source.display().to_string(),
+                    ),
+                ];
+                if !task.args.is_empty() {
+                    attrs.push(("mise.task.args".to_string(), task.args.join(" ")));
+                }
+                if let Some(ref cr) = task.config_root {
+                    attrs.push((
+                        "mise.task.config_root".to_string(),
+                        cr.display().to_string(),
+                    ));
+                }
+                let started = trace_ctx.start_task_span(&otel_span_name, parent_span_id, attrs);
+                Some(started)
+            } else {
+                None
+            };
+            let otel_log_context = otel_started
+                .as_ref()
+                .map(|started| (started.trace_id.clone(), started.span_id.clone()));
+
             let result = this
                 .run_task_sched(
                     &task,
@@ -550,8 +675,10 @@ impl Run {
                     dep_ran,
                     semaphore,
                     &mut permit,
+                    otel_log_context,
                 )
                 .await;
+            let otel_end = std::time::SystemTime::now();
             // If the task actually ran (not skipped) and has sources defined,
             // mark it so dependents' source freshness checks are invalidated.
             // Tasks without sources always run and should not trigger invalidation.
@@ -577,6 +704,40 @@ impl Run {
                 }
                 this.add_failed_task(task.clone(), status);
             }
+
+            // Record completed otel span with real timing and status
+            if let (Some(trace_ctx), Some(started)) = (&this.trace_context, otel_started) {
+                let otel_span_name = Self::otel_task_span_name(&task);
+                let (status, error_msg) = match &result {
+                    Ok(true) => (otel::SpanStatus::Ok, None),
+                    Ok(false) => (otel::SpanStatus::Unset, None), // skipped
+                    Err(err) => (otel::SpanStatus::Error, Some(err.to_string())),
+                };
+                let mut attrs = vec![
+                    ("mise.task.name".to_string(), task.name.clone()),
+                    ("mise.task.display_name".to_string(), otel_span_name.clone()),
+                    (
+                        "mise.task.source".to_string(),
+                        task.config_source.display().to_string(),
+                    ),
+                ];
+                if !task.args.is_empty() {
+                    attrs.push(("mise.task.args".to_string(), task.args.join(" ")));
+                }
+                if let Some(ref cr) = task.config_root {
+                    attrs.push((
+                        "mise.task.config_root".to_string(),
+                        cr.display().to_string(),
+                    ));
+                }
+                if let Ok(false) = &result {
+                    attrs.push(("mise.task.skipped".to_string(), "true".to_string()));
+                }
+                trace_ctx
+                    .end_task_span(started, &otel_span_name, otel_end, status, error_msg, attrs)
+                    .await;
+            }
+
             if let Some(oh) = &this.output_handler
                 && oh.output(None) == TaskOutput::KeepOrder
             {
@@ -729,6 +890,7 @@ impl Run {
         dep_ran: bool,
         semaphore: Arc<tokio::sync::Semaphore>,
         permit: &mut Option<tokio::sync::OwnedSemaphorePermit>,
+        otel_log_context: Option<(String, String)>,
     ) -> Result<bool> {
         self.executor
             .as_ref()
@@ -741,6 +903,7 @@ impl Run {
                 dep_ran,
                 semaphore,
                 permit,
+                otel_log_context,
             )
             .await
     }

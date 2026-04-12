@@ -1434,6 +1434,42 @@ env = "MISE_OS"
 optional = true
 type = "String"
 
+[otel.endpoint]
+description = "[experimental] OpenTelemetry collector endpoint URL for exporting task traces."
+docs = """
+When set, mise will export OpenTelemetry traces for task executions to this endpoint.
+Spans are sent via HTTP/JSON to `<endpoint>/v1/traces`.
+
+Example: `http://localhost:4318`
+"""
+env = "MISE_OTEL_ENDPOINT"
+optional = true
+type = "Url"
+
+[otel.headers]
+description = "[experimental] Custom headers to send with OpenTelemetry export requests."
+docs = """
+Map of header names to values. Useful for authentication tokens required by your collector.
+
+```toml
+[settings.otel.headers]
+Authorization = "Bearer mytoken"
+```
+"""
+env = "MISE_OTEL_HEADERS"
+optional = true
+parse_env = "parse_url_replacements"
+type = "IndexMap<String, String>"
+
+[otel.service_name]
+default = "mise"
+description = "[experimental] Service name to use in exported OpenTelemetry traces."
+docs = """
+The `service.name` resource attribute set on all exported spans.
+"""
+env = "MISE_OTEL_SERVICE_NAME"
+type = "String"
+
 [override_config_filenames]
 default = []
 description = "If set, mise will ignore default config files like `mise.toml` and use these filenames instead."
