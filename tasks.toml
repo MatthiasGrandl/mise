@@ -152,7 +152,7 @@ if [[ ! -x target/debug/mise ]]; then
   cargo build --all-features
 fi
 
-oats -timeout 2m oats/otel-basic/oats.yaml
+oats --timeout 2m --config oats/otel-basic/oats-config.yaml
 """
 
 ["test:shuffle"]
