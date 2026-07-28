@@ -26,4 +26,5 @@ expected:
     - logql: '{service_name="mise-oats"} |= `hello from oats task`'
       match:
         - name: hello from oats task
-      count: == 1
+      # Each assertion poll can drive the input again, producing duplicate logs.
+      count: ">= 1"
