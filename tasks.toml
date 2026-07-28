@@ -152,7 +152,7 @@ if [[ ! -x target/debug/mise ]]; then
   cargo build --all-features
 fi
 
-mise exec "go:github.com/grafana/oats" -- oats --timeout 2m --config oats/otel-basic/oats-config.yaml
+oats --timeout 2m --config oats/otel-basic/oats-config.yaml
 """
 
 ["test:shuffle"]

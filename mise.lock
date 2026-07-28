@@ -583,7 +583,7 @@ url = "https://github.com/crate-ci/cargo-release/releases/download/v1.1.2/cargo-
 url_api = "https://api.github.com/repos/crate-ci/cargo-release/releases/assets/380570010"
 
 [[tools."go:github.com/grafana/oats"]]
-version = "c43e6cb6964d486c8a27df9f2d43b821f5a1ac62"
+version = "0.9.0"
 backend = "go:github.com/grafana/oats"
 
 [[tools.hk]]
