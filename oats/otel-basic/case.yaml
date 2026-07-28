@@ -2,12 +2,12 @@ name: otel-basic
 fixture:
   compose:
     file: docker-compose.yaml
-    app_service: app
-    app_port: 8080
 seed:
   type: app
 input:
-  - path: /run
+  - compose:
+      service: app
+      command: [mise, run, hello]
 expected:
   traces:
     - traceql: '{ resource.service.name = "mise-oats" && name = "mise run hello" }'
@@ -26,5 +26,4 @@ expected:
     - logql: '{service_name="mise-oats"} |= `hello from oats task`'
       match:
         - name: hello from oats task
-      # Each assertion poll can drive the input again, producing duplicate logs.
-      count: ">= 1"
+      count: == 1

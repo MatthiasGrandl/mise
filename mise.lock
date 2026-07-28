@@ -116,64 +116,6 @@ url = "https://github.com/FiloSottile/age/releases/download/v1.3.1/age-v1.3.1-wi
 url_api = "https://api.github.com/repos/FiloSottile/age/releases/assets/333752673"
 provenance = "github-attestations"
 
-[[tools."aqua:grafana/oats"]]
-version = "v0.8.0"
-backend = "aqua:grafana/oats"
-
-[tools."aqua:grafana/oats"."platforms.linux-arm64"]
-checksum = "sha256:82eaf1e836cea916b96cef6745423efd8256ceab64bbabd1fa8f13b3883a1212"
-url = "https://github.com/grafana/oats/releases/download/v0.8.0/oats_0.8.0_linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/grafana/oats/releases/assets/487171323"
-provenance = "github-attestations"
-
-[tools."aqua:grafana/oats"."platforms.linux-arm64-musl"]
-checksum = "sha256:82eaf1e836cea916b96cef6745423efd8256ceab64bbabd1fa8f13b3883a1212"
-url = "https://github.com/grafana/oats/releases/download/v0.8.0/oats_0.8.0_linux_arm64.tar.gz"
-url_api = "https://api.github.com/repos/grafana/oats/releases/assets/487171323"
-provenance = "github-attestations"
-
-[tools."aqua:grafana/oats"."platforms.linux-x64"]
-checksum = "sha256:ea4368c6d7f62244ce959ba60512f271d46d133b50350077257e2bb81c03a5ca"
-url = "https://github.com/grafana/oats/releases/download/v0.8.0/oats_0.8.0_linux_amd64.tar.gz"
-url_api = "https://api.github.com/repos/grafana/oats/releases/assets/487171351"
-provenance = "github-attestations"
-
-[tools."aqua:grafana/oats"."platforms.linux-x64-baseline"]
-checksum = "sha256:ea4368c6d7f62244ce959ba60512f271d46d133b50350077257e2bb81c03a5ca"
-url = "https://github.com/grafana/oats/releases/download/v0.8.0/oats_0.8.0_linux_amd64.tar.gz"
-url_api = "https://api.github.com/repos/grafana/oats/releases/assets/487171351"
-provenance = "github-attestations"
-
-[tools."aqua:grafana/oats"."platforms.linux-x64-musl"]
-checksum = "sha256:ea4368c6d7f62244ce959ba60512f271d46d133b50350077257e2bb81c03a5ca"
-url = "https://github.com/grafana/oats/releases/download/v0.8.0/oats_0.8.0_linux_amd64.tar.gz"
-url_api = "https://api.github.com/repos/grafana/oats/releases/assets/487171351"
-provenance = "github-attestations"
-
-[tools."aqua:grafana/oats"."platforms.linux-x64-musl-baseline"]
-checksum = "sha256:ea4368c6d7f62244ce959ba60512f271d46d133b50350077257e2bb81c03a5ca"
-url = "https://github.com/grafana/oats/releases/download/v0.8.0/oats_0.8.0_linux_amd64.tar.gz"
-url_api = "https://api.github.com/repos/grafana/oats/releases/assets/487171351"
-provenance = "github-attestations"
-
-[tools."aqua:grafana/oats"."platforms.macos-arm64"]
-checksum = "sha256:156bb14787a09093de8ad0370c95e8104b771ca0b3ede382541f9837db797f27"
-url = "https://github.com/grafana/oats/releases/download/v0.8.0/oats_0.8.0_darwin_arm64.tar.gz"
-url_api = "https://api.github.com/repos/grafana/oats/releases/assets/487171322"
-provenance = "github-attestations"
-
-[tools."aqua:grafana/oats"."platforms.windows-x64"]
-checksum = "sha256:166a5577c66efa9e4d677856ae1780212ee27c081042c8d54db0c996019adbc0"
-url = "https://github.com/grafana/oats/releases/download/v0.8.0/oats_0.8.0_windows_amd64.zip"
-url_api = "https://api.github.com/repos/grafana/oats/releases/assets/487171324"
-provenance = "github-attestations"
-
-[tools."aqua:grafana/oats"."platforms.windows-x64-baseline"]
-checksum = "sha256:166a5577c66efa9e4d677856ae1780212ee27c081042c8d54db0c996019adbc0"
-url = "https://github.com/grafana/oats/releases/download/v0.8.0/oats_0.8.0_windows_amd64.zip"
-url_api = "https://api.github.com/repos/grafana/oats/releases/assets/487171324"
-provenance = "github-attestations"
-
 [[tools.aube]]
 version = "1.26.0"
 backend = "github:endevco/aube"
@@ -639,6 +581,10 @@ url_api = "https://api.github.com/repos/crate-ci/cargo-release/releases/assets/3
 checksum = "sha256:b36c0d3b8bd64ff78bfe6904525c5f7d8eafe56a5cd45b0d94793d8072500074"
 url = "https://github.com/crate-ci/cargo-release/releases/download/v1.1.2/cargo-release-v1.1.2-x86_64-pc-windows-msvc.zip"
 url_api = "https://api.github.com/repos/crate-ci/cargo-release/releases/assets/380570010"
+
+[[tools."go:github.com/grafana/oats"]]
+version = "2ab1f5aa48322e9763d1a4d326d7b31d4e31ac1b"
+backend = "go:github.com/grafana/oats"
 
 [[tools.hk]]
 version = "1.48.0"
